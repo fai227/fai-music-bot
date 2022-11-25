@@ -1,15 +1,16 @@
 require("dotenv").config();
-const { Client, GatewayIntentBits, Events, ApplicationCommandOptionType } = require("discord.js");
-const musicList = require("./scripts/musicList");
+const { Client, GatewayIntentBits, Events } = require("discord.js");
 const MusicList = require("./scripts/musicList");
+const ytdl = require("ytdl-core");
+const { joinVoiceChannel, getVoiceConnection, createAudioPlayer, createAudioResource, StreamType, demuxProbe, AudioPlayerStatus } = require("@discordjs/voice");
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 
 // #region コマンド
 const Commands = [
     {
         name: "queue",
-        description: "キューの追加・表示（追加の場合、コマンド使用者はボイスチャットに入っている必要があります。）",
+        description: "キューの追加・表示（追加の場合、コマンド使用者はボイスチャットに入っている必要があります）",
         options: [{
             type: 3,
             name: "url",
@@ -17,20 +18,59 @@ const Commands = [
             required: false
         }],
         async execute(interaction) {
-            let url = interaction.options.getString(this.name);
+            let url = interaction.options.getString(this.options[0].name);
 
             //キューの閲覧
-            if (url === null) {
-                interaction.reply(musicList.toString());
+            if (url == null) {
+                interaction.reply(MusicList.toString());
+                return;
             }
 
             //URLチェック
+            if (!ytdl.validateURL(url)) {
+                interaction.reply("URLが無効です。");
+                return;
+            }
+
+            //ボイスチャンネル取得、登録
+            try {
+                const guildName = interaction.guild.name;
+                const member = client.guilds.cache.get(interaction.guild.id).members.cache.get(interaction.member.id);
+                const voiceChannelId = member.voice.channelId;
+
+                MusicList.push(voiceChannelId, guildName, url);
+
+            } catch (e) {
+                interaction.reply("キューに追加するには、Botがいるサーバーのボイスチャットに入り、同サーバーのテキストチャットで使用する必要があります。");
+            }
+
+            //キューに追加した報告
+            const info = await ytdl.getInfo(url);
+            interaction.reply(`キューに追加されました：${info.videoDetails.title}`);
+
+            //ボイスチャンネルに入っていない場合は接続
+            let connection = joinVoiceChannel({
+                channelId: MusicList.next().id,
+                guildId: interaction.guildId,
+                adapterCreator: interaction.guild.voiceAdapterCreator
+            });
+            let readableStream = await ytdl(url, { filter: "audio" });
+            const player = createAudioPlayer();
+
+            const { stream, type } = await demuxProbe(readableStream);
+            const resource = createAudioResource(stream, { inputType: type });
+
+            connection.subscribe(player);
+
+            player.play(resource);
+            player.on(AudioPlayerStatus.Buffering, async () => {
+                console.log("aaa");
 
 
-            //キューに登録
+            })
 
+            //再生していない場合は再生
 
-            //再生開始
         }
     }, {
         name: "loop",
@@ -59,8 +99,11 @@ const Commands = [
 
 //必要定数
 let loop = false;
+async function MusicPlay() {
 
-async function Play() {
+}
+
+async function MusicStart() {
 
 }
 
@@ -72,7 +115,7 @@ client.once(Events.ClientReady, async (c) => {
 
     //SetCommand();
     client.application.commands.set([]);
-    client.application.commands.set(Commands, "704182270474322010");
+    client.application.commands.set(Commands, "569768541826580480");
 
 });
 
@@ -81,9 +124,12 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
     }
 
+    //console.log(interaction);
+
     for (let i = 0; i < Commands.length; i++) {
         if (Commands[i].name === interaction.commandName) {
             await Commands[i].execute(interaction);
+            return;
         }
     }
 });
