@@ -1,18 +1,11 @@
 require("dotenv").config();
 const { Client, GatewayIntentBits, Events, ApplicationCommandOptionType } = require("discord.js");
+const musicList = require("./scripts/musicList");
 const MusicList = require("./scripts/musicList");
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 // #region コマンド
-/*
-const { SlashCommandBuilder } = require("discord.js");
-const Commands = [
-    new SlashCommandBuilder()
-        .setName("queue")
-]
-*/
-
 const Commands = [
     {
         name: "queue",
@@ -25,26 +18,53 @@ const Commands = [
         }],
         async execute(interaction) {
             let url = interaction.options.getString(this.name);
+
+            //キューの閲覧
             if (url === null) {
-                interaction.reply();
+                interaction.reply(musicList.toString());
             }
+
+            //URLチェック
+
+
+            //キューに登録
+
+
+            //再生開始
+        }
+    }, {
+        name: "loop",
+        description: "楽曲ループのオンオフ設定（別サーバーの予約が入っている際はループされません。）",
+        options: [{
+            type: 3,
+            name: "status",
+            description: "「on」か「off」を入力すると直接設定をすることができます。このオプションを省略するとオンオフが切り替わります。",
+            required: false,
+            choices: [{ name: "on", value: "on" }, { name: "off", value: "off" }]
+        }],
+        async execute(interaction) {
+            let status = interaction.options.getString("status");
+            if (status) {
+                loop = status == "on";
+            } else {
+                loop = !loop;
+            }
+            interaction.reply(`ループが**${loop ? "有" : "無"}効化**されました。`);
         }
     }
 ];
+// #endregion
 
+// #region 楽曲再生メイン部分
 
-function SetCommand() {
-    Commands.forEach(command => {
-        const json = command.toJSON();
-        //client.commands.set(command.);
-    });
+//必要定数
+let loop = false;
 
+async function Play() {
 
-    console.log("Commands Ready!");
 }
 
 // #endregion
-
 
 
 client.once(Events.ClientReady, async (c) => {
@@ -56,13 +76,16 @@ client.once(Events.ClientReady, async (c) => {
 
 });
 
-client.on(Events.InteractionCreate, interaction => {
+client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isCommand()) {
         return;
     }
 
-    console.log(interaction.commandName);
-    console.log(interaction.options.getString("url"));
+    for (let i = 0; i < Commands.length; i++) {
+        if (Commands[i].name === interaction.commandName) {
+            await Commands[i].execute(interaction);
+        }
+    }
 });
 
 
