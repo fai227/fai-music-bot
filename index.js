@@ -47,7 +47,7 @@ const Commands = [
 
                 const member = await client.guilds.cache.get(interaction.guildId).members.cache.get(interaction.member.id).fetch(true);
 
-                const channelId = member.voice.channelId;  // member.voice.channelId;
+                const channelId = member.voice.channelId;
 
                 if (!channelId) {
                     throw "Voice channel not found.";
@@ -82,9 +82,9 @@ const Commands = [
             const info = await ytdl.getInfo(url);
             await interaction.editReply(`キューに追加されました：${info.videoDetails.title}`);
 
-            //ボイスチャンネルに入っていない場合は接続
+            //ボイスチャンネルに入っていない場合は開始
             if (connection == null) {
-                await StartMusic();
+                StartMusic();
             }
         }
     }, {
@@ -114,17 +114,16 @@ const Commands = [
 
 //必要定数
 let loop = false;
+const player = createAudioPlayer();
 let connection;
 async function StartMusic() {
     const nowTrack = MusicList.Now();
-    connection = joinVoiceChannel({
-        channelId: nowTrack.channelId,
-        guildId: nowTrack.guildId,
-        adapterCreator: nowTrack.voiceAdapterCreator,
-    });
+
+    if(!connection) {
+        await Join(nowTrack.channelId, nowTrack.guildId, nowTrack.voiceAdapterCreator);   
+    }
 
     const readbleStream = await ytdl(nowTrack.url, { filter: "audio" });
-    const player = createAudioPlayer();
     const { stream, type } = await demuxProbe(readbleStream);
     const resource = createAudioResource(stream, { inputType: type });
 
@@ -139,15 +138,34 @@ async function StartMusic() {
         const nextTrack = MusicList.Next();
         //次の楽曲がある場合
         if (nextTrack) {
+            //違うチャンネルに移動する必要がある時
+            if(nowTrack.channelId != nextTrack.channelId) {
+                await Join(nextTrack.channelId, nextTrack.guildId, nextTrack.voiceAdapterCreator);
+            }
 
+            MusicList.Shift();
+
+            StartMusic();
         }
         //次の楽曲がないときは終了
         else {
             connection.destroy();
-        }
 
-        //キューを進める
-        MusicList.Shift();
+            //キューを進める
+            MusicList.Shift();
+        }        
+    });
+}
+
+async function Join(channelId, guildId, voiceAdapterCreator) {
+    if(connection) {
+        connection.destroy();
+    }
+
+    connection = joinVoiceChannel({
+        channelId: channelId,
+        guildId: guildId,
+        adapterCreator: voiceAdapterCreator,
     });
 }
 
