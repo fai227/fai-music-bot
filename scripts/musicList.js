@@ -1,18 +1,43 @@
 module.exports = {
     list: [],
-    push(id, name, url) {
-        this.list.push({ id: id, name: name, url: url });
+    Push(guildId, guildName, channelId, voiceAdapterCreator, url) {
+        this.list.push({
+            guildId: guildId,
+            guildName: guildName,
+            channelId: channelId,
+            voiceAdapterCreator: voiceAdapterCreator,
+            url: url,
+        });
     },
-    next() {
+    PriorityPush(guildId, guildName, channelId, voiceAdapterCreator, url) {
+        if (this.list.length === 0) {
+            this.Push(guildId, guildName, channelId, voiceAdapterCreator, url);
+            return;
+        }
+        this.list.splice(1, 0, {
+            guildId: guildId,
+            guildName: guildName,
+            channelId: channelId,
+            voiceAdapterCreator: voiceAdapterCreator,
+            url: url,
+        });
+    },
+    Now() {
         if (this.list.length === 0) {
             return false;
         }
         return this.list[0];
     },
-    delete() {
+    Next() {
+        if (this.list.length <= 1) {
+            return false;
+        }
+        return this.list[1];
+    },
+    Shift() {
         this.list.shift();
     },
-    toString() {
+    ToString() {
         if (this.list.length === 0) {
             return "現在、キューは空です。";
         }
@@ -23,9 +48,9 @@ module.exports = {
 
         for (let i = 0; i < this.list.length; i++) {
             result += `${i + 1}番目, URL:${this.list[i].url}`;
-            if (previousServerName == this.list[i].name) {
-                previousServerName == this.list[i].name;
-                result += `  サーバー名：${this.list[i].name}`;
+            if (previousServerName == this.list[i].guildName) {
+                previousServerName == this.list[i].guildName;
+                result += `  サーバー名：${this.list[i].guildName}`;
             }
             result += "\n";
         }
