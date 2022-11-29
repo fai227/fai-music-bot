@@ -1,6 +1,6 @@
 require("dotenv").config();
 require("./scripts/web")();
-const { Client, GatewayIntentBits, Events } = require("discord.js");
+const { Client, GatewayIntentBits, Events, ActivityType } = require("discord.js");
 const Queue = require("./scripts/queue");
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require("@discordjs/voice");
 const PriorityUser = require("./priority.json");
@@ -140,13 +140,20 @@ async function StartMusic() {
         await Join(nowTrack.channelId, nowTrack.guildId, nowTrack.voiceAdapterCreator);
     }
 
+    //Get Stream
     const source = await play.stream(nowTrack.musicUrl);
     const resource = createAudioResource(source.stream, { inputType: source.type });
 
+    //Set Stream
     connection.subscribe(player);
     player.play(resource);
 
-    //終了時
+    //Set Activity
+    client.user.setActivity(nowTrack.musicName, {
+        type: ActivityType.Listening
+    });
+
+    //On Finish
     player.on(AudioPlayerStatus.Idle, async () => {
         NextTrack();
     });
