@@ -1,9 +1,10 @@
 require("dotenv").config();
+require("./scripts/web")();
 const { Client, GatewayIntentBits, Events } = require("discord.js");
-const MusicList = require("./scripts/musicList");
-const ytdl = require("ytdl-core");
-const { joinVoiceChannel, getVoiceConnection, createAudioPlayer, createAudioResource, StreamType, demuxProbe, AudioPlayerStatus } = require("@discordjs/voice");
+const Queue = require("./scripts/queue");
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require("@discordjs/voice");
 const PriorityUser = require("./priority.json");
+const play = require("play-dl");
 
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
@@ -25,28 +26,30 @@ const Commands = [
                 ephemeral: true
             });
 
-            const url = interaction.options.getString(this.options[0].name);
+            const musicUrl = interaction.options.getString(this.options[0].name);
 
             //キューの閲覧
-            if (url == null) {
-                await interaction.editReply(MusicList.ToString());
+            if (musicUrl == null) {
+                await interaction.editReply(Queue.ToString());
                 return;
             }
 
             //URLチェック
-            if (!ytdl.validateURL(url)) {
-                await interaction.editReply("URLが無効です。");
+            if (!musicUrl.startsWith('https') || play.yt_validate(musicUrl) != 'video') {
+                await interaction.editReply("URLが無効です。また、プレイリストは再生できません。");
                 return;
             }
+
+            //名前を取得
+            const musicInfo = await play.video_info(musicUrl);
+            const musicName = musicInfo.video_details.title;
 
             //ボイスチャンネル取得、登録
             try {
                 const guildId = interaction.guildId;
                 const guildName = interaction.guild.name;
                 const voiceAdapterCreator = interaction.guild.voiceAdapterCreator;
-
                 const member = await client.guilds.cache.get(interaction.guildId).members.cache.get(interaction.member.id).fetch(true);
-
                 const channelId = member.voice.channelId;
 
                 if (!channelId) {
@@ -55,23 +58,11 @@ const Commands = [
 
                 //優先の場合
                 if (PriorityUser.includes(interaction.user.username)) {
-                    MusicList.PriorityPush(
-                        guildId,
-                        guildName,
-                        channelId,
-                        voiceAdapterCreator,
-                        url
-                    );
+                    Queue.PriorityPushTrack(guildId, guildName, channelId, voiceAdapterCreator, musicUrl, musicName);
                 }
                 //普通の場合
                 else {
-                    MusicList.Push(
-                        guildId,
-                        guildName,
-                        channelId,
-                        voiceAdapterCreator,
-                        url
-                    );
+                    Queue.PushTrack(guildId, guildName, channelId, voiceAdapterCreator, musicUrl, musicName);
                 }
             } catch (e) {
                 await interaction.editReply("キューに追加するには、Botがいるサーバーのボイスチャットに入り、同サーバーのテキストチャットで使用する必要があります。");
@@ -79,8 +70,7 @@ const Commands = [
             }
 
             //キューに追加した報告
-            const info = await ytdl.getInfo(url);
-            await interaction.editReply(`キューに追加されました：${info.videoDetails.title}`);
+            await interaction.editReply(`キューに追加されました：${musicName}`);
 
             //ボイスチャンネルに入っていない場合は開始
             if (connection == null) {
@@ -89,22 +79,30 @@ const Commands = [
         }
     }, {
         name: "loop",
-        description: "楽曲ループのオンオフ設定（別サーバーの予約が入っている際はループされません。）",
+        description: "楽曲ループのオンオフ設定（キューに楽曲が入っている場合は適用されません。）",
         options: [{
             type: 3,
             name: "status",
-            description: "「on」か「off」を入力すると直接設定をすることができます。このオプションを省略するとオンオフが切り替わります。",
+            description: "「on」か「off」を入力すると直接設定をすることができます。このオプションを省略するとループの状態を取得することができます。",
             required: false,
             choices: [{ name: "on", value: "on" }, { name: "off", value: "off" }]
         }],
         async execute(interaction) {
             let status = interaction.options.getString("status");
-            if (status) {
-                loop = status == "on";
-            } else {
-                loop = !loop;
+            if (!status) {
+                await interaction.reply({
+                    content: `このサーバーでは現在ループは、**${Queue.GetRepeat(interaction.guildId) ? "オン" : "オフ"}**です。`,
+                    ephemeral: true
+                });
+                return;
             }
-            await interaction.reply(`ループが**${loop ? "有" : "無"}効化**されました。`);
+
+            let loop = status == "on" ? true : false;
+            Queue.SetRepeat(interaction.guild, loop);
+            await interaction.reply({
+                content: `ループが**${loop ? "有" : "無"}効化**されました。`,
+                ephemeral: true
+            });
         }
     }, {
         name: "skip",
@@ -133,26 +131,24 @@ const Commands = [
 // #region 楽曲再生メイン部分
 
 //必要定数
-let loop = false;
 const player = createAudioPlayer();
 let connection;
 async function StartMusic() {
-    const nowTrack = MusicList.Now();
+    const nowTrack = Queue.GetNowTrack();
 
     if (!connection) {
         await Join(nowTrack.channelId, nowTrack.guildId, nowTrack.voiceAdapterCreator);
     }
 
-    const readbleStream = await ytdl(nowTrack.url, { filter: "audio" });
-    const { stream, type } = await demuxProbe(readbleStream);
-    const resource = createAudioResource(stream, { inputType: type });
+    const source = await play.stream(nowTrack.musicUrl);
+    const resource = createAudioResource(source.stream, { inputType: source.type });
 
     connection.subscribe(player);
     player.play(resource);
 
     //終了時
     player.on(AudioPlayerStatus.Idle, async () => {
-        await NextTrack();
+        NextTrack();
     });
 }
 
@@ -169,10 +165,13 @@ async function Join(channelId, guildId, voiceAdapterCreator) {
 }
 
 async function NextTrack() {
-    //ループ判別が必要
+    const nowTrack = Queue.GetNowTrack();
+    const nextTrack = Queue.GetNextTrack();
 
-    const nowTrack = MusicList.Now();
-    const nextTrack = MusicList.Next();
+    if (!nowTrack) {
+        return;
+    }
+
     //次の楽曲がある場合
     if (nextTrack) {
         //違うチャンネルに移動する必要がある時
@@ -180,17 +179,28 @@ async function NextTrack() {
             await Join(nextTrack.channelId, nextTrack.guildId, nextTrack.voiceAdapterCreator);
         }
 
-        MusicList.Shift();
+        //次に進める
+        Queue.ShiftTrack();
 
+        //楽曲開始
         StartMusic();
     }
-    //次の楽曲がないときは終了
+    //次の楽曲がないときはループを見る
     else {
-        connection.destroy();
-        connection = null;
+        //ループがあるときは続ける
+        if (Queue.GetRepeat(nowTrack.guildId)) {
+            StartMusic();
+        }
+        //ループが無いときは終了
+        else {
+            if (!connection) {
+                connection.destroy();
+                connection = null;
+            }
 
-        //キューを進める
-        MusicList.Shift();
+            //キューを進める
+            Queue.ShiftTrack();
+        }
     }
 }
 
@@ -220,6 +230,5 @@ client.on(Events.InteractionCreate, async interaction => {
         }
     }
 });
-
 
 client.login(process.env.DISCORD_TOKEN);
