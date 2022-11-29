@@ -104,7 +104,27 @@ const Commands = [
             } else {
                 loop = !loop;
             }
-            interaction.reply(`ループが**${loop ? "有" : "無"}効化**されました。`);
+            await interaction.reply(`ループが**${loop ? "有" : "無"}効化**されました。`);
+        }
+    }, {
+        name: "skip",
+        description: "現在の楽曲をスキップします。",
+        async execute(interaction) {
+            //楽曲がかかっていないとき
+            if (!connection) {
+                await interaction.reply({
+                    content: "楽曲が再生されていません。",
+                    ephemeral: true
+                });
+            }
+            //かかっているとき
+            else {
+                await interaction.reply({
+                    content: "楽曲をスキップします。",
+                    ephemeral: true
+                });
+                await NextTrack();
+            }
         }
     }
 ];
@@ -119,8 +139,8 @@ let connection;
 async function StartMusic() {
     const nowTrack = MusicList.Now();
 
-    if(!connection) {
-        await Join(nowTrack.channelId, nowTrack.guildId, nowTrack.voiceAdapterCreator);   
+    if (!connection) {
+        await Join(nowTrack.channelId, nowTrack.guildId, nowTrack.voiceAdapterCreator);
     }
 
     const readbleStream = await ytdl(nowTrack.url, { filter: "audio" });
@@ -132,33 +152,12 @@ async function StartMusic() {
 
     //終了時
     player.on(AudioPlayerStatus.Idle, async () => {
-        //ループ判別が必要
-
-
-        const nextTrack = MusicList.Next();
-        //次の楽曲がある場合
-        if (nextTrack) {
-            //違うチャンネルに移動する必要がある時
-            if(nowTrack.channelId != nextTrack.channelId) {
-                await Join(nextTrack.channelId, nextTrack.guildId, nextTrack.voiceAdapterCreator);
-            }
-
-            MusicList.Shift();
-
-            StartMusic();
-        }
-        //次の楽曲がないときは終了
-        else {
-            connection.destroy();
-
-            //キューを進める
-            MusicList.Shift();
-        }        
+        await NextTrack();
     });
 }
 
 async function Join(channelId, guildId, voiceAdapterCreator) {
-    if(connection) {
+    if (connection) {
         connection.destroy();
     }
 
@@ -167,6 +166,32 @@ async function Join(channelId, guildId, voiceAdapterCreator) {
         guildId: guildId,
         adapterCreator: voiceAdapterCreator,
     });
+}
+
+async function NextTrack() {
+    //ループ判別が必要
+
+    const nowTrack = MusicList.Now();
+    const nextTrack = MusicList.Next();
+    //次の楽曲がある場合
+    if (nextTrack) {
+        //違うチャンネルに移動する必要がある時
+        if (nowTrack.channelId != nextTrack.channelId) {
+            await Join(nextTrack.channelId, nextTrack.guildId, nextTrack.voiceAdapterCreator);
+        }
+
+        MusicList.Shift();
+
+        StartMusic();
+    }
+    //次の楽曲がないときは終了
+    else {
+        connection.destroy();
+        connection = null;
+
+        //キューを進める
+        MusicList.Shift();
+    }
 }
 
 // #endregion
@@ -185,7 +210,7 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
     }
 
-    console.log(`${interaction.commandName}コマンド使用：${interaction.user.username}(${interaction.user.id})`);
+    console.log(`${interaction.commandName} command is used by ${interaction.user.username}(${interaction.user.id})`);
     //console.log(interaction);
 
     for (let i = 0; i < Commands.length; i++) {
