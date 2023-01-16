@@ -1,3 +1,4 @@
+console.log("Node Application Started");
 require("dotenv").config();
 require("./scripts/web")();
 const { Client, GatewayIntentBits, Events, ActivityType } = require("discord.js");
@@ -141,7 +142,7 @@ async function StartMusic() {
     }
 
     //Get Stream
-    const source = await play.stream(nowTrack.musicUrl);
+    const source = await play.stream(nowTrack.musicUrl, { discordPlayerCompatibility: true });
     const resource = createAudioResource(source.stream, { inputType: source.type });
 
     //Set Stream
@@ -155,14 +156,25 @@ async function StartMusic() {
 
     //On Finish
     player.on(AudioPlayerStatus.Idle, async () => {
+        console.log("Idle");
         NextTrack();
     });
+    player.on(AudioPlayerStatus.AutoPaused, () => {
+        console.log("Auto Paused");
+    })
+    player.on(AudioPlayerStatus.Buffering, () => {
+        console.log("Buffering");
+    })
+    player.on(AudioPlayerStatus.Paused, () => {
+        console.log("Paused");
+    })
+    player.on(AudioPlayerStatus.Playing, () => {
+        console.log("Playing");
+    })
 }
 
 async function Join(channelId, guildId, voiceAdapterCreator) {
-    if (connection) {
-        connection.destroy();
-    }
+    LeaveVC();
 
     connection = joinVoiceChannel({
         channelId: channelId,
@@ -176,6 +188,7 @@ async function NextTrack() {
     const nextTrack = Queue.GetNextTrack();
 
     if (!nowTrack) {
+        LeaveVC();
         return;
     }
 
@@ -200,15 +213,30 @@ async function NextTrack() {
         }
         //ループが無いときは終了
         else {
-            if (!connection) {
-                connection.destroy();
-                connection = null;
-            }
+            LeaveVC();
 
             //キューを進める
             Queue.ShiftTrack();
         }
     }
+}
+
+function LeaveVC() {
+    if (!connection) {
+        return;
+    }
+
+    ResetActivity();
+
+    connection.destroy();
+    connection = null;
+}
+
+function ResetActivity() {
+    client.user.setActivity("Type /queue", {
+        type: ActivityType.Playing
+    });
+
 }
 
 // #endregion
@@ -220,6 +248,8 @@ client.once(Events.ClientReady, async (c) => {
     //SetCommand();
     await client.application.commands.set([]);
     await client.application.commands.set(Commands);  //, "704182270474322010");
+
+    ResetActivity();
 });
 
 client.on(Events.InteractionCreate, async interaction => {
