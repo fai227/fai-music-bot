@@ -1,2 +1,2 @@
 # fai-music-bot
-DiscordのBot用プログラム。
+音楽再生可能のDiscordのBot用プログラム。
