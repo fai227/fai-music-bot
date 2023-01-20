@@ -84,22 +84,19 @@ const Commands = [
         options: [{
             type: 3,
             name: "status",
-            description: "「on」か「off」を入力すると直接設定をすることができます。このオプションを省略するとループの状態を取得することができます。",
+            description: "「on」か「off」を入力すると直接設定をすることができます。このオプションを省略するとループの状態を変更することができます。",
             required: false,
             choices: [{ name: "on", value: "on" }, { name: "off", value: "off" }]
         }],
         async execute(interaction) {
             let status = interaction.options.getString("status");
+            let loop = status == "on" ? true : false;
+
             if (!status) {
-                await interaction.reply({
-                    content: `このサーバーでは現在ループは、**${Queue.GetRepeat(interaction.guildId) ? "オン" : "オフ"}**です。`,
-                    ephemeral: true
-                });
-                return;
+                loop = !Queue.GetRepeat(interaction.guildId);
             }
 
-            let loop = status == "on" ? true : false;
-            Queue.SetRepeat(interaction.guild, loop);
+            Queue.SetRepeat(interaction.guildId, loop);
             await interaction.reply({
                 content: `ループが**${loop ? "有" : "無"}効化**されました。`,
                 ephemeral: true
@@ -159,6 +156,7 @@ async function StartMusic() {
         console.log("Idle");
         NextTrack();
     });
+    /*
     player.on(AudioPlayerStatus.AutoPaused, () => {
         console.log("Auto Paused");
     })
@@ -171,6 +169,7 @@ async function StartMusic() {
     player.on(AudioPlayerStatus.Playing, () => {
         console.log("Playing");
     })
+    */
 }
 
 async function Join(channelId, guildId, voiceAdapterCreator) {

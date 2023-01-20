@@ -49,18 +49,7 @@ module.exports = {
         return this.queue[1];
     },
     ShiftTrack() {
-        let firstElement = this.queue.shift();
-        if(this.GetRepeat(firstElement.guildId)) {
-            this.PushTrack(
-                firstElement.guildId,
-                firstElement.guildName,
-                firstElement.channelId,
-                firstElement.voiceAdapterCreator,
-                firstElement.musicUrl,
-                firstElement.musicName
-            );
-        }
-        return;
+        return this.queue.shift();
     },
     ToString() {
         //キューが無いとき
